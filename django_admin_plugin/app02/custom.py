@@ -5,8 +5,8 @@ from app03.service import v1
 from app02 import models
 from django.utils.safestring import mark_safe
 from django.urls import reverse
-
-
+from app03.service.v1 import FilterOption
+from app03.service.v1 import FilterList
 class display_oprate(v1.BaseCustom):
 
     def func(self, obj=None,is_header=False):
@@ -44,7 +44,37 @@ class display_oprate(v1.BaseCustom):
         else:
             return "%s-%s"%(obj.username,obj.email)
 
-    list_display = [checkbox, 'id', 'username','email',comb,func]
+    list_display = [checkbox, 'id', 'username', 'email', comb, func]
+
+    def initial(self,request):
+        pk_list=request.POST.getlist('pk')
+        
+        models.UserInfo.objects.filter(pk__in=pk_list).update(username='中南海第十军区五团')
+        return True
+    initial.text='初始化'
+
+    def multi_del(self,request):
+        pass
+    multi_del.text='批量删除1'
+
+    action_list = [initial,multi_del]
+
+    def username(self,option,request):
+        queryset=models.UserInfo.objects.filter(id__gt=1)
+        return FilterList(option,queryset,request)
+
+    def email(self,option,request):
+        queryset = models.UserInfo.objects.filter(id__gt=1)
+        return FilterList(option, queryset, request)
+
+    filter_list = [
+        FilterOption(username,False,text_func_name='text_username',val_func_name='value_username'),
+        FilterOption(email,True,text_func_name='text_email',val_func_name='value_email'),
+        FilterOption('ug',True,),
+        FilterOption('ur',True,),
+    ]
+
+
 
 class Display_userinfo(v1.BaseCustom):
     list_display=['id','username','email']
@@ -114,9 +144,6 @@ class Display_test1(v1.BaseCustom):
             tag = '<input type="checkbox" value="{0}" />'.format(obj.pk)
             return mark_safe(tag)
 
-
-
-
     list_display = [checkbox,'id','title',func]
 
 class Display_group(v1.BaseCustom):
@@ -152,7 +179,36 @@ class Display_group(v1.BaseCustom):
 
     list_display = [checkbox,'id','title',func]
 
+    def initial(self,request):
+        """
+
+        :param request:
+        :return:
+        """
+        pk_list=request.POST.getlist('pk')
+        models.UserInfo.objects.filter(pk__in=pk_list).update(name='中南海第九师五旅')
+        return True
+    initial.text='全部换成 中南海第九师五旅'
+
+    def multi_del(self,request):
+        """
+
+        :param request:
+        :return:
+        """
+    multi_del.text='批量删除'
+    action_list = [initial,multi_del]
+    from app03.service.v1 import FilterOption
+    #text_func_name 写了这个就models.py就不找自己的__str__, 没写这个就默认找__str__,所以 在models.py写一个text_username
+    filter_list = [
+        FilterOption('username',False,text_func_name='text_username',val_func_name='value_username'),
+        FilterOption('email',False),
+        FilterOption('ug',False),
+        FilterOption('ur',False),
+    ]
+
 v1.site.register(models.UserInfo,display_oprate)
+
 v1.site.register(models.Role,Display_Role)
 v1.site.register(models.test1,Display_test1)
 v1.site.register(models.UserGroup,Display_group)

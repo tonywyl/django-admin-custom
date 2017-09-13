@@ -16,14 +16,16 @@ def inner(result_list,list_display,display_change):
 
 
 def table_head(list_display,display_change):
-
-    for item in list_display:
-        if isinstance(item, FunctionType):
-            # head_list.append(item.__name__.title())
-            yield item(display_change, is_header=True)
-        else:
-            yield display_change.model_class._meta.get_field(item).verbose_name
-            # item 类型  "username"  "email" "id"
+    if list_display=='__all__':
+        yield "对象列表"
+    else:
+        for item in list_display:
+            if isinstance(item, FunctionType):
+                # head_list.append(item.__name__.title())
+                yield item(display_change, is_header=True)
+            else:
+                yield display_change.model_class._meta.get_field(item).verbose_name
+                # item 类型  "username"  "email" "id"
 
 
 @register.inclusion_tag('custum/md.html') #表示要导入一个HTML模板,下面的返回值表示给这个模板使用

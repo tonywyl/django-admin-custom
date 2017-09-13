@@ -2,8 +2,53 @@
 {% load custom_list %}
 
 {% block content %}
-<h3>数据列表</h3>
-<!--数据表格 -->
-<a href="{{ add_url }}" class="btn btn-default">添加</a>
-<h3>{% func result_list list_display display_change %} </h3>
+
+<h3>数据列表1</h3>
+    <!--搜索-->{{ filter_list }}aaa
+    {% if filter_list %}
+        <div class="row  comb-search">
+            <h3>组合搜索</h3>
+            {% for fl in filter_list %}
+                <div class="row">
+                    {% for row in fl %}
+                        {{ row }}
+                    {% endfor %}
+                </div>
+            {% endfor %}
+        </div>
+
+    {% endif %}
+<!-- 数据表格 -->
+<form method="post">{% csrf_token %}
+    {% if action_list %}
+        <div class="row">
+            <select name="action" id="" class="form-control" style="width: 300px">
+                {% for item in action_list %}
+
+                    <option value="{{ item.name }}">{{ item.text }}</option>
+                {% endfor %}
+            </select>
+            <input type="submit" class="btn btn-primary" value="执行">
+        </div>
+    {% endif %}
+
+    <div class="container">
+        <a href="{{ add_url }}" class="btn btn-default" style="float: right">添加</a>
+
+
+        <h3>{% func result_list list_display display_change %} </h3>
+    </div>
+</form>
+<!--分页开始-->
+    <ul class="pagination">
+        {{ page_str|safe }}
+    </ul>
+
 {% endblock %}
+
+
+
+
+
+
+

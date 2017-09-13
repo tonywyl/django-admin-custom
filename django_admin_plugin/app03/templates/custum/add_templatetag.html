@@ -6,7 +6,7 @@
             <p>
                 {{ col.item.field.label }}
                 {{ col.item }}
-                <a href="{{ col.popup_url }}">添加</a>
+                <a href="#" onclick="popUrl('{{ col.popup_url }}')">添加</a>
                 {{ col.item.errors.0 }}
             </p>
         {% else %}
@@ -16,10 +16,33 @@
         {% endif %}
 
     {% endfor %}
+
     <input type="submit" value="提交">
 
 
 </form>
+<script>
+    console.log(data_dict);
+
+    function popUrl(url) {
+        window.open(url,url,"status=1,hight:300,width:300,toolbar=0,resizeable=0")
+
+    }
+    function popupCallBack(data_dict) {
+
+        var tag=document.createElement('option');
+
+        tag.innerHTML=data_dict.text;
+
+        tag.setAttribute('value',data_dict.pk);
+
+        tag.setAttribute('selected','selected');
+
+        document.getElementById(data_dict.popid).appendChild(tag)
+    }
+
+</script>
+
 
 
 

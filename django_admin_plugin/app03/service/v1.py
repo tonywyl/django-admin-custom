@@ -1,5 +1,12 @@
 from django.shortcuts import HttpResponse,render,redirect
 from django.urls import reverse
+from types import FunctionType
+from django.utils.safestring import mark_safe
+from django.forms.boundfield import BoundField
+from django.forms.models import ModelFormMetaclass
+from django.forms.models import ModelMultipleChoiceField
+from django.db.models.query import QuerySet
+import copy
 """
 1、数据列表页面，定制显示列
     示例一：
@@ -24,8 +31,14 @@ from django.urls import reverse
 class BaseCustom(object):
     # list_display = ['id','name']
     list_display = "__all__"
+    
+    action_list=[]
 
+    filter_list=[]
+    
+    
     add_or_edit_model_form=None
+
     def __init__(self,model_class,site):
 
         self.model_class=model_class
@@ -87,7 +100,9 @@ class BaseCustom(object):
 
 
 
+
         from django.http.request import QueryDict
+
         # print(request.GET.urlencode())
 
         param_dict=QueryDict(mutable=True)
@@ -103,18 +118,90 @@ class BaseCustom(object):
 
         self.request=request
 
+        condition={}
+        from utils.pager import  PageInfo
+
+        all_count=self.model_class.objects.filter(**condition).count()
+
+        base_page_url=reverse("{2}:{0}_{1}_changelist".format(self.app_label,self.model_name,self.site.namespace))
+        import copy
+        page_param_dict=copy.deepcopy(request.GET)
+        page_param_dict._mutable=True
+
+        page_obj=PageInfo(request.GET.get('page'),all_count,base_page_url,page_param_dict)
+        result_list=self.model_class.objects.filter(**condition)[page_obj.start:page_obj.end]
+
+
         result_list=self.model_class.objects.all()
 
+ 
+        ################分页结束##############
+        
+        ##########Action操作#############
+        #get请求，显示 下拉框
+        
+        action_list=[]
+
+        for item in self.action_list:
+            #获取选的
+            tpl={'name':item.__name__,'text':item.text}
+            action_list.append(tpl)
+            
+        if request.method=='POST':
+            func_name_str=request.POST.get('action')
+            
+            ret=getattr(self,func_name_str)(request)
+
+            action_page_url = reverse(
+                "{2}:{0}_{1}_changelist".format(self.app_label, self.model_name, self.site.namespace))
+
+            if ret:
+                url='{0}?{1}'.format(action_page_url,request.GET.urlencode)
+                # print(url)
+            return redirect(action_page_url)
+
+        
+        ###########组合搜索操作
+
+        filter_list=[]
+        
+        for option in self.filter_list:
+            print(option,'------')
+            if option.is_func:
+                data_list = option.field_or_func(self,option,request)
+            else:
+                from django.db.models import ForeignKey, ManyToManyField,OneToOneField
+                 #如果是字符串   name ug ,ur   username,获取models.py的类名 以及这个表的字段
+                field=self.model_class._meta.get_field(option.field_or_func)
+                print(field,'--field-')
+                
+                if isinstance(field,ForeignKey): #foreignkey的时候，获取到它的关联的表
+
+                    data_list=FilterList(option,field.rel.model.objects.all(),request)
+
+                elif isinstance(field,ManyToManyField):#如果m2m，获取到它的多对多的表。
+                    data_list=FilterList(option,field.rel.model.objects.all(),request)
+
+                else:
+                    data_list=FilterList(option,field.model.objects.all(),request)
+
+            filter_list.append(data_list)
+
         context={
+            'filter_list': filter_list,
             'result_list':result_list,
             'list_display':self.list_display,
             'display_change':self,
-            'add_url':add_url
+            'add_url':add_url,
+            'page_str':page_obj.pager(),
+            'action_list':action_list,
+
         }
 
         return render(request,'custum/change_list.html',context)
 
     def add_view(self,request):
+
         """
         添加数据
         :param request:
@@ -125,25 +212,48 @@ class BaseCustom(object):
         if request.method=='GET':
 
             model_form_obj=self.get_add_or_edit_model_form()()
+
+            context={
+                'form':model_form_obj,
+            }
+            return render(request, 'custum/add.html', context)
         else:
             model_form_obj=self.get_add_or_edit_model_form()(data=request.POST,files=request.FILES)
+            
             if model_form_obj.is_valid():
-                model_form_obj.save()
-                #添加成功，跳转页面
-                #/custom/app01/userinfo/+request.GET.get('_changelistfileter')
-                base_list_url = reverse("{2}:{0}_{1}_changelist".format(self.app_label, self.model_name, self.site.namespace))
-                # print(request.GET.get('_changelistfilter'),'0000')
-                self.list_url = "{0}?{1}".format(base_list_url, request.GET.get('_changelistfilter'))
-                return redirect(self.list_url)
+                obj=model_form_obj.save()
+                
+                #如果是popup 要返回页面给调用
+                popid=request.GET.get('popup')
+                print(popid)
+                if popid:
+                    pk=obj.pk
+                    text=str(obj)
+                    context={
+                        # 'pk':obj.pk,
+                        # 'text':str(obj),
+                        # 'popid':popid
+                        #当数据太多的时候用下面方法封装数据
+                        'data_dict':{'pk':obj.pk,'text':str(obj),}
+                    }
+                    
+                    return render(request,'custum/popup_result.html',{'data_dict':{'pk':obj.pk,'text':str(obj),'popid':popid}})
+                    
+                    
+                else:
+                    #添加成功，跳转页面
+                    #/custom/app01/userinfo/+request.GET.get('_changelistfileter')
+                    base_list_url = reverse("{2}:{0}_{1}_changelist".format(self.app_label, self.model_name, self.site.namespace))
+                    # print(request.GET.get('_changelistfilter'),'0000')
+                    self.list_url = "{0}?{1}".format(base_list_url, request.GET.get('_changelistfilter'))
+                    return redirect(self.list_url)
 
 
-        context={
-            'form':model_form_obj,
-        }
-        from django.forms.boundfield import BoundField
-        from django.forms.models import ModelFormMetaclass
-        from django.forms.models import ModelMultipleChoiceField
-        from django.db.models.query import QuerySet
+            context={
+                'form':model_form_obj,
+            }
+            return render(request, 'custum/add.html', context)
+
 
         for item in model_form_obj: #提示显示中文
             # print(item.label) #这样也可以拿到每个INPUT框的中文
@@ -152,8 +262,6 @@ class BaseCustom(object):
             print(item.field)
 
 
-
-        return render(request,'custum/add.html',context)
     def delete_view(self,request,pk):
         """
         :param reqeust:
@@ -189,7 +297,112 @@ class BaseCustom(object):
             'form':model_form_obj
         }
         return render(request,'custum/edit.html',context)
-    
+
+
+class FilterList(object):
+    def __init__(self,option,queryset,request):
+        self.option=option
+        self.queryset=queryset
+        self.path_info=request.path_info
+        self.param_dict=copy.deepcopy(request.GET)
+
+    def __iter__(self):
+        yield mark_safe("<div class='all-area'>")
+        print(self.option.name,'option.name')
+        if self.option.name in self.param_dict:
+            pop_val = self.param_dict.pop(self.option.name)
+            url = "{0}?{1}".format(self.path_info,self.param_dict.urlencode())
+            # self.param_dict[self.option.name] = pop_val
+            self.param_dict.setlist(self.option.name, pop_val)
+            yield mark_safe('<a href="{0}" class="">全部</a>'.format(url))
+        else:
+            url = "{0}?{1}".format(self.path_info,self.param_dict.urlencode())
+            yield mark_safe('<a class="active" href={0}>全部</a>'.format(url))
+        yield mark_safe("</div><div class='others-area'>")
+        
+        for row in self.queryset:
+            # print(self.param_dict,'----1--')
+
+            param_dict=copy.deepcopy(self.param_dict)
+
+            pk=str(getattr(row,self.option.val_func_name)() if self.option.val_func_name else int(row.pk))  #这里会执行models.py val_func_name 方法，所以返回的是邮箱或者用户名
+
+            # print(type(pk),pk,'--')#str 如果不用str [['["[\'alith@alex.coma\']", \'abc@qq.com\']', 'alith@alex.coma']]
+
+            text=getattr(row,self.option.text_func_name)() if self.option.text_func_name else str(row)
+
+            active=False
+            # print(self.option.name,'self.option.name')
+            if self.option.is_multi:
+                #username email self.option.name 这里是一个列表#[["['fdsa@qc.com']", 'alith@alex.coma']]
+                value_list = param_dict.getlist(self.option.name)
+                # print(param_dict.getlist(self.option.name),'param_dict')
+                # print('value_list',type(param_dict.getlist(self.option.name)),param_dict.getlist(self.option.name),type(pk),pk,'----')
+                
+                if pk in value_list: #这里是如果从request.GEt里获取到在之前copy  出来的里面，就把这一次的删除
+                    print(pk,type(pk),'value_list',value_list)
+
+                    value_list.remove(pk)
+                    param_dict.setlist(self.option.name,value_list)
+                    print(value_list,'=')
+
+                    active=True
+
+                    """
+                    value_list [['abc@qq.com']] alith@alex.coma
+                    value_list [['abc@qq.com']] abc@qq.com
+                    value_list [['abc@qq.com']] xian@xian.com
+                    value_list [['abc@qq.com']] fdsa@qc.com
+                    """
+                    # print(value_list,'=-=-=')
+
+                else:
+                    param_dict.appendlist(self.option.name,pk)#custom/app02/userinfo/?email=%5B%27alith%40alex.coma%27%5D&email=abc%40qq.com
+
+
+            else:
+                value_list=param_dict.getlist(self.option.name)
+                if pk in value_list:#如果不是多选 ，就直接把 深拷贝出来的option.name 重新赋值
+                    active=True
+                param_dict[self.option.name]=pk  #重新赋值，因为不是多选
+            
+            url='{0}?{1}'.format(self.path_info,param_dict.urlencode())
+
+            if active:
+                tpl="<a href='{0}' class='active'>{1}</a>".format(url,text)
+            else:
+                tpl="<a href='{0}'>{1}</a>".format(url,text)
+
+            yield mark_safe(tpl)
+
+        yield mark_safe('</div>')
+
+class FilterOption(object):
+    def __init__(self, field_or_func, is_multi=False, text_func_name=None, val_func_name=None):
+        """
+        :param field: 字段名称或函数
+        :param is_multi: 是否支持多选
+        :param text_func_name: 在Model中定义函数，显示文本名称，默认使用 str(对象)
+        :param val_func_name:  在Model中定义函数，显示文本名称，默认使用 对象.pk
+        """
+        self.field_or_func = field_or_func
+        self.is_multi = is_multi
+        self.text_func_name = text_func_name
+        self.val_func_name = val_func_name
+
+    @property
+    def is_func(self):
+        if isinstance(self.field_or_func, FunctionType):
+            return True
+
+    @property
+    def name(self):
+        if self.is_func:
+            return self.field_or_func.__name__
+        else:
+            return self.field_or_func
+
+
 class Custom(object):
     
     def __init__(self):

@@ -4,11 +4,14 @@ from app03.service import v1
 from app01 import models
 from django.utils.safestring import mark_safe
 from django.urls import reverse
+
+
 class display_oprate(v1.BaseCustom):
     def func(self,obj=None,is_header=False):
         """
         显示操作字段
         """
+        
         if is_header:
             return mark_safe('<th>操作</th>')
         else:
@@ -33,10 +36,40 @@ class display_oprate(v1.BaseCustom):
         if is_header:
             return mark_safe("<input type='checkbox'/>")
         else:
-            tag = '<input type="checkbox" value="{0}" />'.format(obj.pk)
+            tag = '<input name="pk" type="checkbox" value="{0}" />'.format(obj.pk)
             return mark_safe(tag)
 
     list_display = [checkbox,'id','name',func]
+    
+    def initial(self,request):
+        """
+        :return: 
+        """
+        pk_list=request.POST.getlist('pk')
+        models.App02Userinfo.objects.filter(pk__in=pk_list).update(name='南京十八军区')
+
+        return True
+
+    initial.text='全部替换成 南京十八军区'
+        
+    def multi_del(self,request):
+        """
+        
+        :return: 
+        """
+
+    multi_del.text='批量删除'
+    action_list = [initial,multi_del]
+
+    from app03.service.v1 import FilterOption
+    filter_list=[
+        FilterOption('name',False),
+        #FilterOption('name',False),
+
+    ]
+
+    def five(self):
+        pass
 
 class display(v1.BaseCustom):
     list_display=['id','name']
